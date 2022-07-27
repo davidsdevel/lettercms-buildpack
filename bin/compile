@@ -1,43 +1,11 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 BUILD_DIR=$1
 CACHE_DIR=$2
 ENV_DIR=$3
-VENDOR_DIR=$BUILD_DIR/vendor
-PLUGINS_DIR=$BUILD_DIR/.docker/cli-plugins
-
-echo
-echo "-----> HOME        => $HOME"
-echo "-----> BUILD_DIR   => $BUILD_DIR"
-echo "-----> CACHE_DIR   => $CACHE_DIR"
-echo "-----> VENDOR_DIR  => $VENDOR_DIR"
-echo "-----> PLUGINS_DIR => $PLUGINS_DIR"
-
-mkdir -p $CACHE_DIR $VENDOR_DIR $PLUGINS_DIR
-
-echo $(apt-get remove docker docker-engine docker.io containerd runc)
-echo $(apt-get update)
-
-echo $(apt-get install -y ca-certificates curl gnupg lsb-release)
-
-mkdir -p /etc/apt/keyrings
-
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-  $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-
-echo $(apt-get update)
-
-echo $(apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin)
-
-docker -v
-
-docker run hello-world
-
 
 cd "$BUILD_DIR"
+
 echo "Running .heroku/run.sh" | sed 's/^/-----> /'
+
 source .heroku/run.sh
