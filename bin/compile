@@ -13,14 +13,14 @@ echo "-----> CACHE_DIR   => $CACHE_DIR"
 echo "-----> VENDOR_DIR  => $VENDOR_DIR"
 echo "-----> PLUGINS_DIR => $PLUGINS_DIR"
 
-apt update
-apt install apt-transport-https ca-certificates curl software-properties-common
+apk update
+apk install apt-transport-https ca-certificates curl software-properties-common systemctl
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
 add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable"
-apt update
+apk update
 apt-cache policy docker-ce
 
-apt install docker-ce
+apk install docker-ce
 systemctl status docker
 
 cd "$BUILD_DIR"
