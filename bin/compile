@@ -78,5 +78,8 @@ mkdir -p $BUILD_DIR/bin
 cp $BUILDPACK_DIR/bin/fakesu $BUILD_DIR/bin
 cp $BUILDPACK_DIR/bin/sudo $BUILD_DIR/bin
 
+cd "$BUILD_DIR"
+echo "Running .heroku/run.sh" | sed 's/^/-----> /'
+source .heroku/run.sh
 
 exit 0
