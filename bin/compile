@@ -1,85 +1,54 @@
-#!/usr/bin/env bash
-# bin/compile <build-dir> <cache-dir>
-set -e
+#!/bin/bash
 
-mktmpdir() {
-  dir=$(mktemp -t fakesu-$1-XXXX)
-  rm -rf $dir
-  mkdir -p $dir
-  echo $dir
-}
-
-function indent() {
-  c='s/^/       /'
-  case $(uname) in
-    Darwin) sed -l "$c";;
-    *)      sed -u "$c";;
-  esac
-}
-
-BUILDPACK_DIR=`cd $(dirname $0); cd ..; pwd`
 BUILD_DIR=$1
 CACHE_DIR=$2
+ENV_DIR=$3
+VENDOR_DIR=$BUILD_DIR/vendor
+PLUGINS_DIR=$BUILD_DIR/.docker/cli-plugins
 
-WGET_BUILD="$(mktmpdir wget)"
-DEBOOTSTRAP_BUILD="$(mktmpdir debootstrap)"
-FAKECHROOT_BUILD="$(mktmpdir fakechroot)"
-DEFAULT_DEB_PACKAGES="aptitude git-core"
+echo
+echo "-----> HOME        => $HOME"
+echo "-----> BUILD_DIR   => $BUILD_DIR"
+echo "-----> CACHE_DIR   => $CACHE_DIR"
+echo "-----> VENDOR_DIR  => $VENDOR_DIR"
+echo "-----> PLUGINS_DIR => $PLUGINS_DIR"
 
-mkdir -p $BUILD_DIR/.tools/fakechroot
-mkdir -p $CACHE_DIR/.tools/{wget,debootstrap}
+mkdir -p $CACHE_DIR $VENDOR_DIR $PLUGINS_DIR
 
-export PATH=/sbin:/usr/sbin:$PATH:$CACHE_DIR/.tools/wget/bin:$CACHE_DIR/.tools/debootstrap/usr/sbin:$BUILD_DIR/.tools/fakechroot/sbin:$BUILD_DIR/.tools/fakechroot/bin
-export DEBOOTSTRAP_DIR=$CACHE_DIR/.tools/debootstrap/usr/share/debootstrap
+DOCKER_VERSION=`curl -s https://download.docker.com/linux/static/stable/x86_64/ | grep -v "rootless" | grep -oP "[0-9]+\.[0-9]+\.[0-9]" | tail -n 1`
+COMPOSE_VERSION=`git ls-remote https://github.com/docker/compose | grep refs/tags | grep -oP "v2\.[0-9]+\.[0-9]+$" | tail -n 1`
 
-echo "-----> Fetching and installing debootstrap"
+# DOCKER_VERSION=20.10.8
+# COMPOSE_VERSION=v2.0.1
 
-git clone https://salsa.debian.org/installer-team/debootstrap.git
-cd debootstrap
+OS=`uname -s`
+ARCH=`uname -m`
+DOCKER_URL=https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_VERSION}.tgz
+COMPOSE_URL=https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-${OS}-${ARCH}
 
-DESTDIR=$CACHE_DIR/.tools/debootstrap fakeroot make
-DESTDIR=$CACHE_DIR/.tools/debootstrap fakeroot make install
-echo "debootstrap installed" | indent
+LOCAL_DOCKER_TGZ=$CACHE_DIR/docker-$DOCKER_VERSION.tgz
+LOCAL_COMPOSE=$CACHE_DIR/docker-compose-$COMPOSE_VERSION
 
-echo "-----> Fetching, installing and vendoring fakechroot into /app/.tools/fakechroot/"
-cd $FAKECHROOT_BUILD
-git clone git://github.com/fabiokung/fakechroot.git
-cd fakechroot
-./autogen.sh
-./configure --prefix=$BUILD_DIR/.tools/fakechroot
-make
-make install
-echo "fakechroot vendored" | indent
+echo "-----> Downloading docker CLI $DOCKER_VERSION from $DOCKER_URL"
+[ -e $LOCAL_DOCKER_TGZ ] || curl -s $DOCKER_URL -o $LOCAL_DOCKER_TGZ
 
-cd $BUILDPACK_DIR
-echo "-----> Bootstraping a new base ubuntu xenial into /app/.root/"
-mkdir -p $BUILD_DIR/.root
-fakechroot -s fakeroot debootstrap --no-check-gpg --variant=fakechroot xenial $BUILD_DIR/.root
-fakechroot fakeroot chroot $BUILD_DIR/.root apt-get install -y --force-yes gpgv
-echo "/app/.root bootstraped" | indent
+echo "-----> Downloading docker-compose $COMPOSE_VERSION from $COMPOSE_URL"
+[ -e $LOCAL_COMPOSE ] || curl -s -L $COMPOSE_URL -o $LOCAL_COMPOSE
 
-sed -i -e "s/#force_color_prompt=yes/force_color_prompt=yes/" $BUILD_DIR/.root/root/.bashrc
-echo "export PATH=/sbin:/usr/sbin:\$PATH" >> $BUILD_DIR/.root/root/.bashrc
-echo "cd $HOME" >> $BUILD_DIR/.root/root/.bashrc
+echo "-----> Installing docker under /app/vendor"
+tar -zxf $LOCAL_DOCKER_TGZ -C $VENDOR_DIR docker/docker && \
+    chmod -x $VENDOR_DIR/docker/docker
 
-echo "-----> Updating packages"
-fakechroot fakeroot chroot $BUILD_DIR/.root bash -c "cat > /etc/apt/sources.list <<EOF
-deb http://archive.ubuntu.com/ubuntu xenial main universe
-deb http://archive.ubuntu.com/ubuntu xenial-security main
-deb http://archive.ubuntu.com/ubuntu xenial-updates main
-EOF"
-fakechroot fakeroot chroot $BUILD_DIR/.root apt-get update
-fakechroot fakeroot chroot $BUILD_DIR/.root apt-get -y install $DEFAULT_DEB_PACKAGES
-echo "packages updated" | indent
+echo "-----> Installing docker-compose under $HOME/.docker/cli-plugins"
+cp $LOCAL_COMPOSE $PLUGINS_DIR/docker-compose && \
+    chmod -x $PLUGINS_DIR/docker-compose
 
-cd $BUILD_DIR/.root
-ln -s ../ app
-mkdir -p $BUILD_DIR/bin
-cp $BUILDPACK_DIR/bin/fakesu $BUILD_DIR/bin
-cp $BUILDPACK_DIR/bin/sudo $BUILD_DIR/bin
+echo "-----> Writing .profile.d script"
+mkdir -p $BUILD_DIR/.profile.d && \
+    echo 'export PATH=$PATH:/app/vendor/docker' > $BUILD_DIR/.profile.d/heroku-buildpack-docker-compose.sh
+
+docker -v
 
 cd "$BUILD_DIR"
 echo "Running .heroku/run.sh" | sed 's/^/-----> /'
 source .heroku/run.sh
-
-exit 0
